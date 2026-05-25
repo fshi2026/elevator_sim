@@ -1,6 +1,6 @@
 {
   "num_floors": 60,
-  "num_elevators": 2,
+  "num_elevators": 6,
   "capacity": 10,
   "load_time": 3
 }

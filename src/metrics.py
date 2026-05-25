@@ -42,7 +42,7 @@ from passenger import Passenger, PassengerState
 
 @dataclass(frozen=True)
 class RunStats:
-    """Stats for a single simulation run (one seed's passengers).
+    """Stats for a single simulation run.
 
     All "per-passenger metric" fields are computed only over
     `delivered` passengers (those with non-None `dropoff_time`).

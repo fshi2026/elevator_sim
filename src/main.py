@@ -26,6 +26,7 @@ from typing import Optional
 
 from elevator import Elevator
 from scheduler import (
+    RoundRobinScheduler,
     Scheduler,
 )
 from sim_io import (
@@ -37,6 +38,10 @@ from sim_io import (
 from simulator import SimulationResult, Simulator
 
 
+# Registry of scheduler classes selectable via `--scheduler NAME`.
+SCHEDULERS: dict[str, type[Scheduler]] = {
+    "round_robin": RoundRobinScheduler,
+}
 
 def main(argv: Optional[list[str]] = None) -> int:
     args = _parse_args(argv)
@@ -52,8 +57,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         Elevator(id=i, capacity=config.capacity, load_time=config.load_time)
         for i in range(config.num_elevators)
     ]
-    # TODO: replace with actual scheduler implementation
-    scheduler = Scheduler(elevators)
+    scheduler = SCHEDULERS[args.scheduler](elevators)
     result = Simulator(config, scheduler, passengers).run()
 
     positions_csv = args.out_dir / "positions.csv"
@@ -100,6 +104,10 @@ def _parse_args(argv: Optional[list[str]]) -> argparse.Namespace:
     parser.add_argument(
         "--out-dir", type=Path, required=True,
         help="Directory for output files (created if missing).",
+    )
+    parser.add_argument(
+        "--scheduler", choices=sorted(SCHEDULERS.keys()), default="round_robin",
+        help="Which scheduler to run (default: round_robin).",
     )
     return parser.parse_args(argv)
 

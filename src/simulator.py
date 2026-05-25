@@ -142,6 +142,10 @@ class Simulator:
                 f"Scheduler produced an invalid event sequence."
             )
 
+    def _reveal_at(self, t: int) -> Iterable[Passenger]:
+        """Passengers whose `request_time` becomes visible at tick `t`."""
+        return self._pending_by_time.get(t, ())
+
     def _all_dropped_off(self) -> bool:
         return all(p.state == PassengerState.DELIVERED for p in self.passengers)
 
