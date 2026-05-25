@@ -137,4 +137,57 @@ def _can_insert_at(
         return prev < nxt and prev <= new_floor <= nxt
     return prev > nxt and prev >= new_floor >= nxt
 
+def compute_etas(
+    events: Sequence[ElevatorEvent],
+    elev_floor: int,
+    load_remaining: int,
+    load_time: int,
+) -> list[int]:
+    """Tick offsets from "now" for each event in `events`.
 
+    Returns a list of length `len(events)`.
+    """
+    etas: list[int] = []
+    if not events:
+        return etas
+
+    t = 0
+    cur_floor = elev_floor
+    is_mid_dwell = load_remaining > 0
+
+    i = 0
+    while i < len(events):
+        target = events[i].floor
+        if target != cur_floor:
+            # Need to move. If mid-dwell, drain it first.
+            if is_mid_dwell:
+                t += load_remaining
+                is_mid_dwell = False
+            t += abs(target - cur_floor)   # MOVED ticks
+            t += 1                         # ARRIVED tick (events fire here)
+        else:
+            # Already at target — events fire on the next tick
+            # (ARRIVED if not mid-dwell, LOADING if mid-dwell;
+            # either way, 1 tick from now).
+            t += 1
+
+        # Same-floor batch.
+        while i < len(events) and events[i].floor == target:
+            etas.append(t)
+            i += 1
+
+        # Post-event dwell before next move, if any events remain.
+        if i < len(events):
+            if target == cur_floor and is_mid_dwell:
+                # Continuing the in-flight dwell: 1 tick was the
+                # firing tick; the rest of the dwell is what was
+                # already scheduled.
+                t += load_remaining - 1
+                is_mid_dwell = False
+            else:
+                # Fresh ARRIVED → standard post-arrival dwell.
+                t += load_time - 1
+
+        cur_floor = target
+
+    return etas

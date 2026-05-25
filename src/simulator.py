@@ -142,12 +142,35 @@ class Simulator:
                 f"Scheduler produced an invalid event sequence."
             )
 
+    # ---- Hooks for batch vs. streaming variants -------------------------
+    #
+    # The default Simulator is batch: all passengers are known at
+    # construction time and pre-bucketed into `_pending_by_time`. A
+    # streaming variant would subclass and override `_reveal_at` (poll
+    # an external source and grow `self.passengers`) and
+    # `_is_input_exhausted` (true once the source signals "done"). The
+    # tick loop itself stays unchanged.
     def _reveal_at(self, t: int) -> Iterable[Passenger]:
         """Passengers whose `request_time` becomes visible at tick `t`."""
         return self._pending_by_time.get(t, ())
 
+    def _is_input_exhausted(self) -> bool:
+        """True if no more requests will ever arrive.
+
+        Batch knows everything upfront so this is always True. Streaming
+        overrides to consult its source ("the producer closed the
+        channel"); until then `_all_dropped_off` cannot terminate even
+        if every known passenger is delivered, since more may yet appear.
+        """
+        return True
+
     def _all_dropped_off(self) -> bool:
-        return all(p.state == PassengerState.DELIVERED for p in self.passengers)
+        return (
+            self._is_input_exhausted()
+            and all(
+                p.state == PassengerState.DELIVERED for p in self.passengers
+            )
+        )
 
 
 def _validate_passenger(passenger: Passenger, num_floors: int) -> None:

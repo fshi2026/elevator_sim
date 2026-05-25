@@ -98,6 +98,24 @@ class Elevator:
         return self._passenger_count
 
     @property
+    def load_remaining(self) -> int:
+        """Ticks of dwell still owed at the current floor (0 if the
+        elevator isn't mid-dwell). Exposed for schedulers that need it
+        as an input to `routing.compute_etas` — the ETA of the first
+        future event depends on whether the current dwell still needs
+        to drain before movement begins.
+        """
+        return self._load_remaining
+
+    @property
+    def direction(self) -> Direction:
+        """Direction of the most recent MOVED tick; IDLE if the queue is
+        empty or no movement has happened yet. Informational only — the
+        scheduler must derive any *future* direction from `Elevator.heading`
+        instead (forward-looking, pure function of `(floor, event_queue)`)."""
+        return self._direction
+
+    @property
     def event_queue(self) -> tuple[ElevatorEvent, ...]:
         """The remaining ordered event list. Tuple = immutable from outside."""
         return tuple(self._event_queue)

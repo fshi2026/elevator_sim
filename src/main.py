@@ -26,6 +26,7 @@ from typing import Optional
 
 from elevator import Elevator
 from scheduler import (
+    NearestScheduler,
     RoundRobinScheduler,
     Scheduler,
 )
@@ -41,6 +42,7 @@ from simulator import SimulationResult, Simulator
 # Registry of scheduler classes selectable via `--scheduler NAME`.
 SCHEDULERS: dict[str, type[Scheduler]] = {
     "round_robin": RoundRobinScheduler,
+    "nearest": NearestScheduler,
 }
 
 def main(argv: Optional[list[str]] = None) -> int:

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+import math
 from typing import TYPE_CHECKING
 
 import routing
@@ -148,6 +149,62 @@ class RoundRobinScheduler(Scheduler):
         )
         self._cursor = (idx + 1) % self._n
         return idx
+
+class NearestScheduler(Scheduler):
+    """Score every elevator by projected pickup ETA; pick the minimum.
+
+    For each elevator, simulate the proposed insertion (via
+    `routing.try_insert_pair`) and compute when the resulting queue
+    would actually arrive at the new pickup floor (via
+    `routing.compute_etas`). That ETA is the elevator's "score" —
+    lower is better.
+    """
+
+    def _pick_elevator(self, passenger: Passenger, current_time: int) -> int:
+        best_idx = -1
+        best_score: float = math.inf
+        for idx in range(self._n):
+            score = self._score(idx, passenger)
+            if score < best_score:
+                best_score = score
+                best_idx = idx
+        assert best_idx >= 0, (
+            f"{type(self).__name__}: no elev has a finite score — should be "
+            f"impossible since end-of-queue insertion always exists"
+        )
+        return best_idx
+
+    def _score(self, elev_idx: int, passenger: Passenger) -> float:
+        """The score for picking `elev_idx` to serve `passenger`. Lower
+        is better. NearestScheduler returns the projected pickup ETA.
+        """
+        return self._pickup_eta_if_assigned(elev_idx, passenger)
+
+    def _pickup_eta_if_assigned(
+        self, elev_idx: int, passenger: Passenger
+    ) -> float:
+        """Projected tick offset from "now" until `elev_idx` arrives at
+        the new pickup floor, assuming the passenger is assigned and
+        inserted via the standard _optimize_event_queue path. Returns `math.inf` if
+        no cap-safe insertion exists (signals a precondition bug —
+        end-of-queue should always fit)."""
+        elev = self._elevators[elev_idx]
+        pickup = PickupEvent(passenger.id, passenger.origin)
+        dropoff = DropoffEvent(passenger.id, passenger.destination)
+        proposed = routing.try_insert_pair(
+            elev.event_queue,
+            elev.floor,
+            elev.passenger_count,
+            elev.capacity,
+            pickup,
+            dropoff,
+        )
+        if proposed is None:
+            return math.inf
+        etas = routing.compute_etas(
+            proposed, elev.floor, elev.load_remaining, elev.load_time,
+        )
+        return etas[proposed.index(pickup)]
 
 def _can_take(elev: "Elevator", passenger: Passenger) -> bool:
     """direction match + pickup in reach."""
