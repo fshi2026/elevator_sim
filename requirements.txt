@@ -1,0 +1,8 @@
+# Runtime dependencies for the elevator simulator.
+#
+# The simulator itself uses only the Python standard library. This file
+# exists so `pip install -r requirements.txt` works as a no-op smoke
+# check and as a place to pin runtime deps if any are added later.
+#
+# Python >= 3.9 (uses PEP 585 generic-builtin annotations under
+# `from __future__ import annotations`).

@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+.vscode/
+.DS_Store
+
+# Simulator output
+out/
+
+# Generated inputs
+examples/generated/
