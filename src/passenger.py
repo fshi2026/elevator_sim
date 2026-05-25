@@ -51,3 +51,31 @@ class Passenger:
         if self.assigned_elevator is not None:
             return PassengerState.WAITING
         return PassengerState.PENDING_ASSIGN
+    
+    @property
+    def travel_distance(self) -> int:
+        return abs(self.destination - self.origin)
+
+    @property
+    def wait_time(self) -> Optional[int]:
+        if self.pickup_time is None:
+            return None
+        return self.pickup_time - self.request_time
+
+    @property
+    def total_time(self) -> Optional[int]:
+        if self.dropoff_time is None:
+            return None
+        return self.dropoff_time - self.request_time
+
+    def ideal_total_time(self, load_time: int) -> int:
+        return 2 * load_time + self.travel_distance
+
+    def overhead(self, load_time: int) -> Optional[int]:
+        """`total_time - ideal_total_time(load_time)` — the time the
+        scheduler / contention added on top of this passenger's
+        unavoidable trip cost. None if not yet delivered.
+        """
+        if self.total_time is None:
+            return None
+        return self.total_time - self.ideal_total_time(load_time)
