@@ -94,7 +94,7 @@ class Scheduler(ABC):
         cap-safe (an invariant the scheduler maintains).
         """
         pickup = PickupEvent(passenger.id, passenger.origin)
-        dropoff = DropoffEvent(passenger.id, passenger.destination)
+        dropoff = DropoffEvent(passenger.id, passenger.destination, passenger.direction)
         result = routing.try_insert_pair(
             elev.event_queue,
             elev.floor,
@@ -190,7 +190,7 @@ class NearestScheduler(Scheduler):
         end-of-queue should always fit)."""
         elev = self._elevators[elev_idx]
         pickup = PickupEvent(passenger.id, passenger.origin)
-        dropoff = DropoffEvent(passenger.id, passenger.destination)
+        dropoff = DropoffEvent(passenger.id, passenger.destination, passenger.direction)
         proposed = routing.try_insert_pair(
             elev.event_queue,
             elev.floor,

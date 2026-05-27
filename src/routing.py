@@ -8,9 +8,8 @@ chosen elevator's queue such that:
   1. Pickup precedes dropoff (obviously).
   2. Walking the resulting sequence, cabin occupancy never exceeds
      capacity.
-  3. The insertion is "direction-natural" — the elevator naturally
-     passes through the pickup floor and dropoff floor along its
-     existing path, with no backward detour.
+  3. The insertion is "direction-natural" — every passenger's cabin
+     trip is monotonic in their direction.
 
 A note on "direction-natural"
 -----------------------------
@@ -68,6 +67,88 @@ def walk_capacity(
     return pcs, max_pc
 
 
+def is_direction_natural(
+    events: Sequence[ElevatorEvent], elev_floor: int
+) -> bool:
+    """True iff every passenger's cabin trip in `events` is monotonic
+    in their direction.
+    """
+    try:
+        assert_direction_natural(events, elev_floor)
+        return True
+    except ValueError:
+        return False
+
+
+def assert_direction_natural(
+    events: Sequence[ElevatorEvent], elev_floor: int
+) -> None:
+    """Verify per-passenger monotonicity in `events`; raise
+    ValueError on the first violation, naming the offending
+    passenger and indices.
+
+    A passenger boarding at `events[pi]` and exiting at `events[di]`
+    is direction-natural iff the floor sequence at indices
+    `[pi, pi+1, ..., di]` is non-decreasing (UP passenger) or
+    non-increasing (DOWN). The same applies to "orphan"
+    DropoffEvents (no matching PickupEvent in `events` — the
+    passenger was already in the cabin when the queue was set): the
+    sequence runs from `elev_floor` through every event up to the
+    DO. Direction for matched (PU, DO) pairs is derived from the
+    floor pair, not the DO's `direction` field, so test fixtures
+    with the default-IDLE direction still get checked. Orphan DOs
+    require a non-IDLE `direction` to be verifiable; if it's IDLE
+    we skip the check (no way to know which direction was
+    intended).
+    """
+
+    direction_by_pid: dict[int, Direction] = {}
+    pu_floor_by_pid: dict[int, int] = {}
+    orphan_pids: set[int] = set()
+    for e in events:
+        if isinstance(e, PickupEvent):
+            pu_floor_by_pid[e.passenger_id] = e.floor
+        elif isinstance(e, DropoffEvent):
+            if e.passenger_id in pu_floor_by_pid:
+                pu_f = pu_floor_by_pid[e.passenger_id]
+                direction_by_pid[e.passenger_id] = (
+                    Direction.UP if e.floor > pu_f else Direction.DOWN
+                )
+            elif e.direction != Direction.IDLE:
+                direction_by_pid[e.passenger_id] = e.direction
+                orphan_pids.add(e.passenger_id)
+
+    # Active in-cabin trips: passenger_id -> direction. Seeded with
+    # orphan DO passengers (already in cabin at queue-set time).
+    active: dict[int, Direction] = {
+        pid: direction_by_pid[pid] for pid in orphan_pids
+    }
+
+    prev_floor = elev_floor
+    for idx, e in enumerate(events):
+        for pid, direction in active.items():
+            if direction == Direction.UP and e.floor < prev_floor:
+                raise ValueError(
+                    f"passenger {pid} (UP) backward detour at event "
+                    f"index {idx}: floor {prev_floor} -> {e.floor}"
+                )
+            if direction == Direction.DOWN and e.floor > prev_floor:
+                raise ValueError(
+                    f"passenger {pid} (DOWN) backward detour at event "
+                    f"index {idx}: floor {prev_floor} -> {e.floor}"
+                )
+
+        if isinstance(e, PickupEvent):
+            if e.passenger_id in direction_by_pid:
+                active[e.passenger_id] = direction_by_pid[e.passenger_id]
+            # PU with no matching DO is an upstream invariant violation;
+            # not our problem to flag here.
+        elif isinstance(e, DropoffEvent):
+            active.pop(e.passenger_id, None)
+
+        prev_floor = e.floor
+
+
 def try_insert_pair(
     events: Sequence[ElevatorEvent],
     elev_floor: int,
@@ -112,8 +193,18 @@ def try_insert_pair(
                 events_after_pickup[:di] + [dropoff] + events_after_pickup[di:]
             )
             _, max_pc = walk_capacity(candidate, elev_pc)
-            if max_pc <= capacity:
-                return candidate
+            if max_pc > capacity:
+                continue
+            # The per-event `_can_insert_at` check is local — it can
+            # accept a (pi, di) pair where the new passenger's cabin
+            # trip spans an existing opposite-direction sweep (PU
+            # mid-queue, DO at end). Verify the full per-passenger
+            # invariant before accepting. End-of-queue insertion
+            # (pi=n, di=n+1) is always safe and acts as the
+            # guaranteed fallback.
+            if not is_direction_natural(candidate, elev_floor):
+                continue
+            return candidate
 
     return None
 
@@ -136,6 +227,7 @@ def _can_insert_at(
     if direction == Direction.UP:
         return prev < nxt and prev <= new_floor <= nxt
     return prev > nxt and prev >= new_floor >= nxt
+
 
 def compute_etas(
     events: Sequence[ElevatorEvent],

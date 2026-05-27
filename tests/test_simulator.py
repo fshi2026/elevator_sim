@@ -399,3 +399,57 @@ def test_end_to_end_completes_no_stranding():
         assert p.pickup_time is not None, f"P{p.id} never picked up"
         assert p.dropoff_time is not None, f"P{p.id} never delivered"
         assert p.request_time <= p.pickup_time < p.dropoff_time
+
+
+def test_routing_limitation_missing_v_bottom_extension():
+    """Illustrates the strict-routing limitation: it won't extend the
+    V-bottom of an existing trip to slot in a new pickup that
+    naturally sits there.
+
+    Three UP requests on one elevator (cfg: 60 floors, cap 10,
+    load_time 3):
+
+        t=0   pid=0  1 → 10
+        t=9   pid=1  5 → 12     (arrives mid-flight while elev climbs)
+        t=14  pid=2  4 → 14     (arrives as elev drops pid=0 at 10)
+
+    pid=1 lands at end-of-queue: at t=9 the elevator is past floor 5
+    on its way to 10, so PU(5) isn't reachable on the current UP
+    sweep. The queue becomes
+    `[DO(0,10), PU(1,5), DO(1,12)]` — natural V-shape:
+    10 → 5 → 12.
+
+    pid=2 arrives just as the elevator reaches 10. The "ideal"
+    insertion would extend the V-bottom of the existing plan from
+    floor 5 down to floor 4: elevator path 10 → 4 → 5 → 12 → 14,
+    no detour for anyone. The strict per-event check rejects this
+    (PU=4 isn't between 10 and 5 going UP from pid=2's perspective),
+    so pid=2 also lands at end-of-queue: 10 → 5 → 12 → 4 → 14, an
+    extra ~14 floors of elevator travel and a much longer ride for
+    pid=2. The makespan and pid=2's total_time below quantify the
+    cost.
+
+    If/when `try_insert_pair` gains a safe V-bottom extension, these
+    numbers should drop — update the assertions to match.
+    """
+    cfg, _, sched = build(num_elevators=1)
+    passengers = [
+        req(0, t=0, origin=1, dest=10),
+        req(1, t=9, origin=5, dest=12),
+        req(2, t=14, origin=4, dest=14),
+    ]
+    result = Simulator(cfg, sched, passengers).run()
+
+    # Current strict-routing outcome.
+    assert result.final_tick == 55
+
+    p0, p1, p2 = passengers
+    assert (p0.pickup_time, p0.dropoff_time) == (1, 13)
+    assert (p1.pickup_time, p1.dropoff_time) == (21, 31)
+    # pid=2 pays for the missing V-bottom extension: picked up after
+    # the elevator has finished pid=1's trip and turned around.
+    # A V-bottom-extension routing would pick pid=2 up ~20 ticks
+    # earlier (elev would dip to floor 4 right after dropping pid=0
+    # at floor 10).
+    assert (p2.pickup_time, p2.dropoff_time) == (42, 55)
+    assert p2.total_time == 41

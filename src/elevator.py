@@ -60,10 +60,13 @@ class PickupEvent:
 
 @dataclass(frozen=True)
 class DropoffEvent:
-    """The elevator drops off this passenger at this floor."""
+    """The elevator drops off this passenger at this floor.
+    `direction` is the passenger's intended travel direction.
+    """
 
     passenger_id: int
     floor: int
+    direction: Direction = Direction.IDLE
 
 
 ElevatorEvent = Union[PickupEvent, DropoffEvent]
