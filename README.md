@@ -196,6 +196,51 @@ mode. None of the schedulers here do that.
   and recovery hysteresis are the design questions.
 - Better idle policy.
 
+### Sweep-based routing redesign
+
+The router currently places a new passenger's pickup and dropoff
+one list position at a time. Each placement checks only its local
+neighborhood — is this floor on the elevator's path between the
+events immediately before and after? That's a local approximation
+of the actual property we want, which is global: every passenger's
+ride from pickup to dropoff should move monotonically in their
+direction, with no backward detour. The local rule can accept
+pickup-dropoff pairs that span an existing direction reversal;
+a separate per-passenger verification catches those after the fact,
+but the structure feels patched.
+
+A cleaner formulation is to think in **sweeps** — the elevator's
+planned path naturally partitions into monotonic runs of UP and
+DOWN segments separated by the floors where it reverses direction.
+The invariant we want is then easy to state: a new pickup–dropoff
+pair must land entirely within a single matching-direction sweep,
+or start a fresh sweep at the end of the queue. Under that framing
+the desired property holds by construction; nothing needs to be
+filtered out afterward.
+
+The remaining open question is whether the bounds of an existing
+sweep should be **extendable** to accept pickups or dropoffs just
+outside the current range. There's a pinned regression test
+showing a 3-passenger scenario where one such "V-shape" extension
+would save roughly twenty ticks of total trip time. Tempting — but
+corpus stress tests showed that under the current nearest-pickup-ETA
+scheduler, allowing extensions hurts average wait times sharply.
+The added flexibility lets the scheduler concentrate new requests
+on whichever elevator already has a matching-direction sweep, while
+quietly invalidating the pickup ETAs it had already promised to
+passengers earlier in that elevator's queue. Wait times explode
+and the scheduler's choices stop being trustworthy.
+
+So extensions stay off the table until they're paired with a
+scheduler that explicitly models that perturbation cost — one that
+scores not just the new request's pickup time but also the harm
+inflicted on already-bound passengers. Without that, the safest
+policy is "no extensions": new requests either fit a sweep that
+already exists, or wait their turn in a fresh sweep at the end.
+The sweep redesign under that policy is a clarity refactor more
+than a behavior change; its real payoff arrives the day a
+load-aware scheduler does.
+
 ## Project layout
 
 ```
